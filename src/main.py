@@ -8,7 +8,7 @@ from src.s3_client import S3Client
 from src.rabbitmq_client import RabbitMQClient
 from src.file_client import FileClient
 from src.converter import ProtobufConverter
-from src.Protobuf.Message_pb2 import ApiToSubtitleMerger
+from src.Protobuf.Message_pb2 import ApiToSubtitleMerger, MediaPodStatus
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -70,7 +70,7 @@ def process_message(message):
             raise Exception
         
         apiToSubtitleMerger.mediaPod.originalVideo.subtitle = srtFile
-        apiToSubtitleMerger.mediaPod.status = 'subtitle_merger_complete'
+        apiToSubtitleMerger.mediaPod.status = MediaPodStatus.Name(MediaPodStatus.SUBTITLE_MERGER_COMPLETE)
         
         file_client.delete_file(tmpSrtFilePath)
         for subtitle in subtitles:
@@ -79,7 +79,7 @@ def process_message(message):
         rmq_client.send_message(apiToSubtitleMerger, "App\\Protobuf\\SubtitleMergerToApi")
         return True
     except Exception as e:
-        apiToSubtitleMerger.mediaPod.status = 'subtitle_merger_error'
+        apiToSubtitleMerger.mediaPod.status = MediaPodStatus.Name(MediaPodStatus.SUBTITLE_MERGER_ERROR)
         if not rmq_client.send_message(apiToSubtitleMerger, "App\\Protobuf\\SubtitleMergerToApi"):
             return False
 
