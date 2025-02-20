@@ -35,12 +35,12 @@ celery.conf.update({
 
 @celery.task(name='tasks.process_message', queue=app.config['RMQ_QUEUE_READ'])
 def process_message(message):
-    apiToSubtitleMerger: ApiToSubtitleMerger = ProtobufConverter.json_to_protobuf(message)
+    protobuf: ApiToSubtitleMerger = ProtobufConverter.json_to_protobuf(message)
     
     try:
         subtitles = []
-        for subtitle in apiToSubtitleMerger.mediaPod.originalVideo.subtitles:
-            key = f"{apiToSubtitleMerger.mediaPod.userUuid}/{apiToSubtitleMerger.mediaPod.uuid}/subtitles/{subtitle}"
+        for subtitle in protobuf.mediaPod.originalVideo.subtitles:
+            key = f"{protobuf.mediaPod.userUuid}/{protobuf.mediaPod.uuid}/subtitles/{subtitle}"
             if not s3_client.download_file(key, f"/tmp/{subtitle}"):
                 raise Exception
             subtitles.append(f"/tmp/{subtitle}")
@@ -60,27 +60,27 @@ def process_message(message):
             
             currentOffset += 300
 
-        srtFile = apiToSubtitleMerger.mediaPod.originalVideo.name.replace(".mp4", ".srt")
+        srtFile = protobuf.mediaPod.originalVideo.name.replace(".mp4", ".srt")
         tmpSrtFilePath = f"/tmp/{srtFile}"
         with open(tmpSrtFilePath, 'w', encoding='utf-8') as f:
             f.writelines(mergedSubtitles)
 
-        key = f"{apiToSubtitleMerger.mediaPod.userUuid}/{apiToSubtitleMerger.mediaPod.uuid}/{srtFile}"
+        key = f"{protobuf.mediaPod.userUuid}/{protobuf.mediaPod.uuid}/{srtFile}"
         if not s3_client.upload_file(tmpSrtFilePath, key):
             raise Exception
         
-        apiToSubtitleMerger.mediaPod.originalVideo.subtitle = srtFile
-        apiToSubtitleMerger.mediaPod.status = MediaPodStatus.Name(MediaPodStatus.SUBTITLE_MERGER_COMPLETE)
+        protobuf.mediaPod.originalVideo.subtitle = srtFile
+        protobuf.mediaPod.status = MediaPodStatus.Name(MediaPodStatus.SUBTITLE_MERGER_COMPLETE)
         
         file_client.delete_file(tmpSrtFilePath)
         for subtitle in subtitles:
             file_client.delete_file(subtitle)
 
-        rmq_client.send_message(apiToSubtitleMerger, "App\\Protobuf\\SubtitleMergerToApi")
+        rmq_client.send_message(protobuf, "App\\Protobuf\\SubtitleMergerToApi")
         return True
     except Exception as e:
-        apiToSubtitleMerger.mediaPod.status = MediaPodStatus.Name(MediaPodStatus.SUBTITLE_MERGER_ERROR)
-        if not rmq_client.send_message(apiToSubtitleMerger, "App\\Protobuf\\SubtitleMergerToApi"):
+        protobuf.mediaPod.status = MediaPodStatus.Name(MediaPodStatus.SUBTITLE_MERGER_ERROR)
+        if not rmq_client.send_message(protobuf, "App\\Protobuf\\SubtitleMergerToApi"):
             return False
 
 def parse_srt(tmpSrtFilePath):
